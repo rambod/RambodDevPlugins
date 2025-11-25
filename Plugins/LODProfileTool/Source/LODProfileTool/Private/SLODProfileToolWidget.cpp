@@ -118,21 +118,18 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 			+ SUniformGridPanel::Slot(0, 1)
 			[
 				SNew(SButton)
-				.Text(FText::FromString(TEXT("Validate Profile")))
-				.OnClicked(this, &SLODProfileToolWidget::OnValidateProfile)
-			]
-			+ SUniformGridPanel::Slot(1, 1)
-			[
-				SNew(SButton)
 				.Text(FText::FromString(TEXT("Preview Selected Mesh")))
 				.OnClicked(this, &SLODProfileToolWidget::OnPreviewMesh)
 			]
-			+ SUniformGridPanel::Slot(0, 2)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(TEXT("Revert to Defaults")))
-				.OnClicked(this, &SLODProfileToolWidget::OnRevertToDefaults)
-			]
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(6.f)
+		[
+			SNew(STextBlock)
+			.AutoWrapText(true)
+			.Text(FText::FromString(TEXT("Usage: Select static meshes or folders in the Content Browser, then Apply to Selection/Folder. Toggle Override Existing to replace current LODs. Auto-save saves immediately after apply. Preview Selected Mesh opens the first selected mesh in the Static Mesh Editor.")))
 		]
 	];
 
@@ -251,6 +248,7 @@ void SLODProfileToolWidget::ResizeArraysToLODCount(int32 NewCount)
 		LODCountTextBox->SetText(FText::AsNumber(NewCount));
 	}
 	RebuildLODEntries();
+
 }
 
 FReply SLODProfileToolWidget::OnApplyToSelection()
@@ -299,19 +297,47 @@ FReply SLODProfileToolWidget::OnApplyToFolder()
 	FContentBrowserModule& CBModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 	TArray<FString> SelectedPaths;
 	CBModule.Get().GetSelectedFolders(SelectedPaths);
+	if (SelectedPaths.Num() == 0)
+	{
+		TArray<FString> PathViewFolders;
+		CBModule.Get().GetSelectedPathViewFolders(PathViewFolders);
+		SelectedPaths.Append(PathViewFolders);
+	}
+
+	if (SelectedPaths.Num() == 0)
+	{
+		UE_LOG(LogLODProfileTool, Warning, TEXT("No folders selected. Select a folder in the Content Browser and try again."));
+		return FReply::Handled();
+	}
 
 	TArray<FAssetData> Assets;
 	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	for (const FString& Path : SelectedPaths)
+	TSet<FName> UniquePaths;
+	for (const FString& PathString : SelectedPaths)
 	{
-		FARFilter Filter;
-		Filter.PackagePaths.Add(*Path);
-		Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
-		Filter.bRecursivePaths = true;
+		if (!PathString.StartsWith(TEXT("/")))
+		{
+			UE_LOG(LogLODProfileTool, Warning, TEXT("Skipping invalid folder path: %s"), *PathString);
+			continue;
+		}
+
+		const FName PackagePath(*PathString);
+		if (UniquePaths.Contains(PackagePath))
+		{
+			continue;
+		}
+		UniquePaths.Add(PackagePath);
 
 		TArray<FAssetData> PathAssets;
-		AssetRegistry.Get().GetAssets(Filter, PathAssets);
-		Assets.Append(PathAssets);
+		AssetRegistry.Get().GetAssetsByPath(PackagePath, PathAssets, /*bRecursive=*/true, /*bIncludeOnlyOnDiskAssets=*/false);
+		for (const FAssetData& AssetData : PathAssets)
+		{
+			if (AssetData.AssetClassPath == UStaticMesh::StaticClass()->GetClassPathName())
+			{
+				Assets.Add(AssetData);
+			}
+		}
+		UE_LOG(LogLODProfileTool, Log, TEXT("Found %d asset(s) under %s"), PathAssets.Num(), *PathString);
 	}
 
 	if (!ConfirmOverwriteIfNeeded(Assets.Num()))
@@ -331,39 +357,12 @@ FReply SLODProfileToolWidget::OnApplyToFolder()
 	return FReply::Handled();
 }
 
-FReply SLODProfileToolWidget::OnValidateProfile()
-{
-	SyncProfileFromUI();
-
-	FString Error;
-	if (!FLODProfileApplicator::ValidateProfile(EditableProfile, Error))
-	{
-		UE_LOG(LogLODProfileTool, Error, TEXT("Profile invalid: %s"), *Error);
-	}
-	else
-	{
-		UE_LOG(LogLODProfileTool, Log, TEXT("Profile is valid (%d LODs)."), EditableProfile.NumLODs);
-	}
-	return FReply::Handled();
-}
-
 FReply SLODProfileToolWidget::OnPreviewMesh()
 {
 	FContentBrowserModule& CBModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 	TArray<FAssetData> SelectedAssets;
 	CBModule.Get().GetSelectedAssets(SelectedAssets);
 	FLODProfileApplicator::OpenPreviewForAssets(SelectedAssets);
-	return FReply::Handled();
-}
-
-FReply SLODProfileToolWidget::OnRevertToDefaults()
-{
-	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
-	EditableProfile = Settings->BuildProfile();
-	bAutoSaveOverride = Settings->bAutoSaveAssets;
-	ResizeArraysToLODCount(EditableProfile.NumLODs);
-	RefreshToggles();
-	RebuildLODEntries();
 	return FReply::Handled();
 }
 
@@ -380,24 +379,4 @@ bool SLODProfileToolWidget::ConfirmOverwriteIfNeeded(int32 AssetCount) const
 		FText::AsNumber(AssetCount));
 	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, Message);
 	return Response == EAppReturnType::Yes;
-}
-
-void SLODProfileToolWidget::RefreshToggles()
-{
-	if (ReductionCheckBox.IsValid())
-	{
-		ReductionCheckBox->SetIsChecked(EditableProfile.bEnableReduction ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
-	}
-	if (OverrideCheckBox.IsValid())
-	{
-		OverrideCheckBox->SetIsChecked(EditableProfile.bOverrideExisting ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
-	}
-	if (AutoSaveCheckBox.IsValid())
-	{
-		AutoSaveCheckBox->SetIsChecked(bAutoSaveOverride ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
-	}
-	if (LODCountTextBox.IsValid())
-	{
-		LODCountTextBox->SetText(FText::AsNumber(EditableProfile.NumLODs));
-	}
 }

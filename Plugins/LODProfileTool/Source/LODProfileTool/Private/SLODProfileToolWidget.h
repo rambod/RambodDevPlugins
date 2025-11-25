@@ -26,15 +26,12 @@ private:
 	// Actions
 	FReply OnApplyToSelection();
 	FReply OnApplyToFolder();
-	FReply OnValidateProfile();
 	FReply OnPreviewMesh();
-	FReply OnRevertToDefaults();
 
 	// Helpers
 	void SyncProfileFromUI();
 	void ResizeArraysToLODCount(int32 NewCount);
 	bool ConfirmOverwriteIfNeeded(int32 AssetCount) const;
-	void RefreshToggles();
 
 	FLODProfile EditableProfile;
 	bool bAutoSaveOverride = false;
