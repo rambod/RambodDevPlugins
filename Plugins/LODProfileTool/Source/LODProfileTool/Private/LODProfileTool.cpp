@@ -8,13 +8,15 @@
 #include "ToolMenus.h"
 #include "ContentBrowserMenuContexts.h"
 #include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
 #include "LevelEditor.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "ToolMenu.h"
-#include "Styling/SlateIcon.h"
+#include "Textures/SlateIcon.h"
 #include "Styling/AppStyle.h"
+#include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "FLODProfileToolModule"
 
@@ -37,12 +39,12 @@ void FLODProfileToolModule::StartupModule()
 
 void FLODProfileToolModule::ShutdownModule()
 {
-	if (UToolMenus::IsAvailable())
+	if (UToolMenus* Menus = UToolMenus::Get())
 	{
-		UToolMenus::UnregisterOwner(this);
+		Menus->UnregisterOwner(this);
 	}
 
-	if (FGlobalTabmanager::Get().IsValid())
+	if (FSlateApplication::IsInitialized())
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(LODProfileTabName);
 	}
@@ -76,6 +78,11 @@ void FLODProfileToolModule::RegisterMenus()
 		{
 			if (const UContentBrowserAssetContextMenuContext* AssetContext = Context.FindContext<UContentBrowserAssetContextMenuContext>())
 			{
+				if (AssetContext->SelectedAssets.IsEmpty())
+				{
+					return;
+				}
+
 				const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
 				FLODProfile Profile = Settings->BuildProfile();
 
@@ -91,7 +98,7 @@ void FLODProfileToolModule::RegisterMenus()
 					return;
 				}
 
-				FLODProfileApplicator::ApplyProfileToAssets(Profile, AssetContext->GetSelectedAssets(), Settings->bAutoSaveAssets);
+				FLODProfileApplicator::ApplyProfileToAssets(Profile, AssetContext->SelectedAssets, Settings->bAutoSaveAssets);
 			}
 		})
 	);
@@ -102,8 +109,10 @@ void FLODProfileToolModule::RegisterMenus()
 		"OpenLODProfileTool",
 		LOCTEXT("OpenLODProfileTool_Label", "Open LOD Profile Tool"),
 		LOCTEXT("OpenLODProfileTool_Tooltip", "Open the LOD Profile Tool window."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateRaw(this, &FLODProfileToolModule::InvokeTab))
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"),
+		FUIAction(FExecuteAction::CreateRaw(this, &FLODProfileToolModule::InvokeTab)),
+		EUserInterfaceActionType::Button,
+		NAME_None
 	);
 
 	UToolMenu* WindowMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Window");
@@ -113,7 +122,9 @@ void FLODProfileToolModule::RegisterMenus()
 		LOCTEXT("OpenLODProfileToolWindow", "LOD Profile Tool"),
 		LOCTEXT("OpenLODProfileToolWindow_Tooltip", "Open the LOD Profile Tool tab."),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"),
-		FUIAction(FExecuteAction::CreateRaw(this, &FLODProfileToolModule::InvokeTab))
+		FUIAction(FExecuteAction::CreateRaw(this, &FLODProfileToolModule::InvokeTab)),
+		EUserInterfaceActionType::Button,
+		NAME_None
 	);
 }
 

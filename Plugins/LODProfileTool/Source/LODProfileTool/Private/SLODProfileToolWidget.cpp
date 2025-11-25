@@ -9,6 +9,8 @@
 #include "LODProfileToolSettings.h"
 #include "Modules/ModuleManager.h"
 #include "Engine/StaticMesh.h"
+#include "IContentBrowserSingleton.h"
+#include "UObject/TopLevelAssetPath.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -270,7 +272,7 @@ FReply SLODProfileToolWidget::OnApplyToFolder()
 
 	FContentBrowserModule& CBModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 	TArray<FString> SelectedPaths;
-	CBModule.Get().GetSelectedPaths(SelectedPaths);
+	CBModule.Get().GetSelectedFolders(SelectedPaths);
 
 	TArray<FAssetData> Assets;
 	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -278,7 +280,7 @@ FReply SLODProfileToolWidget::OnApplyToFolder()
 	{
 		FARFilter Filter;
 		Filter.PackagePaths.Add(*Path);
-		Filter.ClassNames.Add(UStaticMesh::StaticClass()->GetFName());
+		Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
 		Filter.bRecursivePaths = true;
 
 		TArray<FAssetData> PathAssets;

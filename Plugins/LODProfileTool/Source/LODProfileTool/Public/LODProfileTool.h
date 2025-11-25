@@ -7,7 +7,7 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogLODProfileTool, Log, All);
 
 class SDockTab;
-struct FSpawnTabArgs;
+class FSpawnTabArgs;
 
 class FLODProfileToolModule : public IModuleInterface
 {
