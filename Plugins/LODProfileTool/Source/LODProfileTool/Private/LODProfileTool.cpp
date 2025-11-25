@@ -34,7 +34,8 @@ void FLODProfileToolModule::StartupModule()
 		FOnSpawnTab::CreateRaw(this, &FLODProfileToolModule::SpawnLODProfileTab))
 		.SetDisplayName(LOCTEXT("LODProfileToolTabTitle", "LOD Profile Tool"))
 		.SetTooltipText(LOCTEXT("LODProfileToolTooltip", "Configure and apply LOD profiles."))
-		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
+		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"))
+		.SetMenuType(ETabSpawnerMenuType::Hidden); // avoid duplicate automatic menu entries
 }
 
 void FLODProfileToolModule::ShutdownModule()
@@ -115,6 +116,7 @@ void FLODProfileToolModule::RegisterMenus()
 		NAME_None
 	);
 
+	// Single Window menu entry (tab spawner menu hidden to avoid duplication)
 	UToolMenu* WindowMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Window");
 	FToolMenuSection& WindowSection = WindowMenu->FindOrAddSection("WindowLayout");
 	WindowSection.AddMenuEntry(
