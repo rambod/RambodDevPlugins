@@ -5,6 +5,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "LODProfileTool.h"
 #include "LODProfileToolSettings.h"
+#include "Misc/ScopedSlowTask.h"
 #include "StaticMeshResources.h"
 #include "UObject/Package.h"
 #include "Editor.h"
@@ -83,8 +84,20 @@ bool FLODProfileApplicator::ValidateProfile(const FLODProfile& Profile, FString&
 int32 FLODProfileApplicator::ApplyProfileToAssets(const FLODProfile& Profile, const TArray<FAssetData>& Assets, bool bAutoSave)
 {
 	int32 Successes = 0;
+	FScopedSlowTask Progress(Assets.Num(), NSLOCTEXT("LODProfileTool", "ApplyProfileProgress", "Applying LOD Profile..."));
+	const bool bShowProgress = Assets.Num() > 3;
+	if (bShowProgress)
+	{
+		Progress.MakeDialog(/*AllowCancel=*/false);
+	}
+
 	for (const FAssetData& AssetData : Assets)
 	{
+		if (bShowProgress)
+		{
+			Progress.EnterProgressFrame(1.f, FText::FromName(AssetData.AssetName));
+		}
+
 		UStaticMesh* Mesh = Cast<UStaticMesh>(AssetData.GetAsset());
 		if (!Mesh)
 		{

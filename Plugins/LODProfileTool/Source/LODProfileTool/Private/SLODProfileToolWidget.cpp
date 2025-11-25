@@ -10,6 +10,7 @@
 #include "Modules/ModuleManager.h"
 #include "Engine/StaticMesh.h"
 #include "IContentBrowserSingleton.h"
+#include "Misc/MessageDialog.h"
 #include "UObject/TopLevelAssetPath.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -20,6 +21,7 @@
 void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 {
 	EditableProfile = ULODProfileToolSettings::Get()->BuildProfile();
+	bAutoSaveOverride = ULODProfileToolSettings::Get()->bAutoSaveAssets;
 
 	ChildSlot
 	[
@@ -53,7 +55,7 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
-				SNew(SCheckBox)
+				SAssignNew(ReductionCheckBox, SCheckBox)
 				.IsChecked(EditableProfile.bEnableReduction ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
 				.OnCheckStateChanged_Lambda([this](ECheckBoxState State){ EditableProfile.bEnableReduction = State == ECheckBoxState::Checked; })
 				.Content()
@@ -66,12 +68,25 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 			.Padding(12.f, 0.f)
 			.VAlign(VAlign_Center)
 			[
-				SNew(SCheckBox)
+				SAssignNew(OverrideCheckBox, SCheckBox)
 				.IsChecked(EditableProfile.bOverrideExisting ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
 				.OnCheckStateChanged_Lambda([this](ECheckBoxState State){ EditableProfile.bOverrideExisting = State == ECheckBoxState::Checked; })
 				.Content()
 				[
 					SNew(STextBlock).Text(FText::FromString(TEXT("Override Existing")))
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(12.f, 0.f)
+			.VAlign(VAlign_Center)
+			[
+				SAssignNew(AutoSaveCheckBox, SCheckBox)
+				.IsChecked(bAutoSaveOverride ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState State){ bAutoSaveOverride = State == ECheckBoxState::Checked; })
+				.Content()
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Auto-save after apply")))
 				]
 			]
 		]
@@ -111,6 +126,12 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Preview Selected Mesh")))
 				.OnClicked(this, &SLODProfileToolWidget::OnPreviewMesh)
+			]
+			+ SUniformGridPanel::Slot(0, 2)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Revert to Defaults")))
+				.OnClicked(this, &SLODProfileToolWidget::OnRevertToDefaults)
 			]
 		]
 	];
@@ -247,13 +268,18 @@ FReply SLODProfileToolWidget::OnApplyToSelection()
 	TArray<FAssetData> SelectedAssets;
 	CBModule.Get().GetSelectedAssets(SelectedAssets);
 
+	if (!ConfirmOverwriteIfNeeded(SelectedAssets.Num()))
+	{
+		return FReply::Handled();
+	}
+
 	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
 	if (Settings->bWarnOnOverwrite && EditableProfile.bOverrideExisting)
 	{
 		UE_LOG(LogLODProfileTool, Warning, TEXT("Overwrite existing LODs is enabled. Existing settings may be replaced."));
 	}
 
-	const bool bAutoSave = Settings->bAutoSaveAssets;
+	const bool bAutoSave = bAutoSaveOverride;
 	const int32 Applied = FLODProfileApplicator::ApplyProfileToAssets(EditableProfile, SelectedAssets, bAutoSave);
 	UE_LOG(LogLODProfileTool, Log, TEXT("Applied LOD profile to %d asset(s)."), Applied);
 	return FReply::Handled();
@@ -288,13 +314,18 @@ FReply SLODProfileToolWidget::OnApplyToFolder()
 		Assets.Append(PathAssets);
 	}
 
+	if (!ConfirmOverwriteIfNeeded(Assets.Num()))
+	{
+		return FReply::Handled();
+	}
+
 	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
 	if (Settings->bWarnOnOverwrite && EditableProfile.bOverrideExisting)
 	{
 		UE_LOG(LogLODProfileTool, Warning, TEXT("Overwrite existing LODs is enabled. Existing settings may be replaced."));
 	}
 
-	const bool bAutoSave = Settings->bAutoSaveAssets;
+	const bool bAutoSave = bAutoSaveOverride;
 	const int32 Applied = FLODProfileApplicator::ApplyProfileToAssets(EditableProfile, Assets, bAutoSave);
 	UE_LOG(LogLODProfileTool, Log, TEXT("Applied LOD profile to %d asset(s) from folders."), Applied);
 	return FReply::Handled();
@@ -323,4 +354,50 @@ FReply SLODProfileToolWidget::OnPreviewMesh()
 	CBModule.Get().GetSelectedAssets(SelectedAssets);
 	FLODProfileApplicator::OpenPreviewForAssets(SelectedAssets);
 	return FReply::Handled();
+}
+
+FReply SLODProfileToolWidget::OnRevertToDefaults()
+{
+	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
+	EditableProfile = Settings->BuildProfile();
+	bAutoSaveOverride = Settings->bAutoSaveAssets;
+	ResizeArraysToLODCount(EditableProfile.NumLODs);
+	RefreshToggles();
+	RebuildLODEntries();
+	return FReply::Handled();
+}
+
+bool SLODProfileToolWidget::ConfirmOverwriteIfNeeded(int32 AssetCount) const
+{
+	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
+	if (!Settings->bWarnOnOverwrite || !EditableProfile.bOverrideExisting || AssetCount <= 1)
+	{
+		return true;
+	}
+
+	const FText Message = FText::Format(
+		FText::FromString(TEXT("Overwrite existing LODs for {0} assets? This will replace current LOD settings.")),
+		FText::AsNumber(AssetCount));
+	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, Message);
+	return Response == EAppReturnType::Yes;
+}
+
+void SLODProfileToolWidget::RefreshToggles()
+{
+	if (ReductionCheckBox.IsValid())
+	{
+		ReductionCheckBox->SetIsChecked(EditableProfile.bEnableReduction ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
+	}
+	if (OverrideCheckBox.IsValid())
+	{
+		OverrideCheckBox->SetIsChecked(EditableProfile.bOverrideExisting ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
+	}
+	if (AutoSaveCheckBox.IsValid())
+	{
+		AutoSaveCheckBox->SetIsChecked(bAutoSaveOverride ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
+	}
+	if (LODCountTextBox.IsValid())
+	{
+		LODCountTextBox->SetText(FText::AsNumber(EditableProfile.NumLODs));
+	}
 }
