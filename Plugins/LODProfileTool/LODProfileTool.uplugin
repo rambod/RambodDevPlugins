@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.0",
+	"FriendlyName": "LOD Profile Tool",
+	"Description": "Applies consistent LOD profiles to static meshes directly inside Unreal Editor. Includes batch processing of selected assets, custom LOD counts, and user-defined screen-size thresholds. Designed for large projects and automated pipeline workflows.",
+	"Category": "Editor",
+	"CreatedBy": "Rambod",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "https://rambod.net",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"SupportedTargetPlatforms": [
+		"Win64",
+		"Mac",
+		"Linux"
+	],
+	"Modules": [
+		{
+			"Name": "LODProfileTool",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}
