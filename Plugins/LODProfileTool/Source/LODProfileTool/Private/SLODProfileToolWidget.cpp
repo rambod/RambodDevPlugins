@@ -2,16 +2,12 @@
 
 #include "SLODProfileToolWidget.h"
 
-#include "AssetRegistry/AssetRegistryModule.h"
 #include "ContentBrowserModule.h"
 #include "LODProfileApplicator.h"
 #include "LODProfileTool.h"
 #include "LODProfileToolSettings.h"
 #include "Modules/ModuleManager.h"
-#include "Engine/StaticMesh.h"
-#include "IContentBrowserSingleton.h"
 #include "Misc/MessageDialog.h"
-#include "UObject/TopLevelAssetPath.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -109,18 +105,6 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 				.Text(FText::FromString(TEXT("Apply to Selection")))
 				.OnClicked(this, &SLODProfileToolWidget::OnApplyToSelection)
 			]
-			+ SUniformGridPanel::Slot(1, 0)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(TEXT("Apply to Folder")))
-				.OnClicked(this, &SLODProfileToolWidget::OnApplyToFolder)
-			]
-			+ SUniformGridPanel::Slot(0, 1)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(TEXT("Preview Selected Mesh")))
-				.OnClicked(this, &SLODProfileToolWidget::OnPreviewMesh)
-			]
 		]
 
 		+ SVerticalBox::Slot()
@@ -129,7 +113,7 @@ void SLODProfileToolWidget::Construct(const FArguments& InArgs)
 		[
 			SNew(STextBlock)
 			.AutoWrapText(true)
-			.Text(FText::FromString(TEXT("Usage: Select static meshes or folders in the Content Browser, then Apply to Selection/Folder. Toggle Override Existing to replace current LODs. Auto-save saves immediately after apply. Preview Selected Mesh opens the first selected mesh in the Static Mesh Editor.")))
+			.Text(FText::FromString(TEXT("Usage: Select static meshes in the Content Browser, then click Apply to Selection. Toggle Override Existing to replace current LODs. Auto-save saves immediately after apply.")))
 		]
 	];
 
@@ -280,89 +264,6 @@ FReply SLODProfileToolWidget::OnApplyToSelection()
 	const bool bAutoSave = bAutoSaveOverride;
 	const int32 Applied = FLODProfileApplicator::ApplyProfileToAssets(EditableProfile, SelectedAssets, bAutoSave);
 	UE_LOG(LogLODProfileTool, Log, TEXT("Applied LOD profile to %d asset(s)."), Applied);
-	return FReply::Handled();
-}
-
-FReply SLODProfileToolWidget::OnApplyToFolder()
-{
-	SyncProfileFromUI();
-
-	FString Error;
-	if (!FLODProfileApplicator::ValidateProfile(EditableProfile, Error))
-	{
-		UE_LOG(LogLODProfileTool, Error, TEXT("Profile invalid: %s"), *Error);
-		return FReply::Handled();
-	}
-
-	FContentBrowserModule& CBModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
-	TArray<FString> SelectedPaths;
-	CBModule.Get().GetSelectedFolders(SelectedPaths);
-	if (SelectedPaths.Num() == 0)
-	{
-		TArray<FString> PathViewFolders;
-		CBModule.Get().GetSelectedPathViewFolders(PathViewFolders);
-		SelectedPaths.Append(PathViewFolders);
-	}
-
-	if (SelectedPaths.Num() == 0)
-	{
-		UE_LOG(LogLODProfileTool, Warning, TEXT("No folders selected. Select a folder in the Content Browser and try again."));
-		return FReply::Handled();
-	}
-
-	TArray<FAssetData> Assets;
-	FAssetRegistryModule& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TSet<FName> UniquePaths;
-	for (const FString& PathString : SelectedPaths)
-	{
-		if (!PathString.StartsWith(TEXT("/")))
-		{
-			UE_LOG(LogLODProfileTool, Warning, TEXT("Skipping invalid folder path: %s"), *PathString);
-			continue;
-		}
-
-		const FName PackagePath(*PathString);
-		if (UniquePaths.Contains(PackagePath))
-		{
-			continue;
-		}
-		UniquePaths.Add(PackagePath);
-
-		TArray<FAssetData> PathAssets;
-		AssetRegistry.Get().GetAssetsByPath(PackagePath, PathAssets, /*bRecursive=*/true, /*bIncludeOnlyOnDiskAssets=*/false);
-		for (const FAssetData& AssetData : PathAssets)
-		{
-			if (AssetData.AssetClassPath == UStaticMesh::StaticClass()->GetClassPathName())
-			{
-				Assets.Add(AssetData);
-			}
-		}
-		UE_LOG(LogLODProfileTool, Log, TEXT("Found %d asset(s) under %s"), PathAssets.Num(), *PathString);
-	}
-
-	if (!ConfirmOverwriteIfNeeded(Assets.Num()))
-	{
-		return FReply::Handled();
-	}
-
-	const ULODProfileToolSettings* Settings = ULODProfileToolSettings::Get();
-	if (Settings->bWarnOnOverwrite && EditableProfile.bOverrideExisting)
-	{
-		UE_LOG(LogLODProfileTool, Warning, TEXT("Overwrite existing LODs is enabled. Existing settings may be replaced."));
-	}
-
-	const bool bAutoSave = bAutoSaveOverride;
-	const int32 Applied = FLODProfileApplicator::ApplyProfileToAssets(EditableProfile, Assets, bAutoSave);
-	UE_LOG(LogLODProfileTool, Log, TEXT("Applied LOD profile to %d asset(s) from folders."), Applied);
-	return FReply::Handled();
-}
-
-FReply SLODProfileToolWidget::OnPreviewMesh()
-{
-	FContentBrowserModule& CBModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
-	TArray<FAssetData> SelectedAssets;
-	CBModule.Get().GetSelectedAssets(SelectedAssets);
-	FLODProfileApplicator::OpenPreviewForAssets(SelectedAssets);
 	return FReply::Handled();
 }
 

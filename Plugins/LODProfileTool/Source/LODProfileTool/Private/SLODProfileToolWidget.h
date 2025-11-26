@@ -25,8 +25,6 @@ private:
 
 	// Actions
 	FReply OnApplyToSelection();
-	FReply OnApplyToFolder();
-	FReply OnPreviewMesh();
 
 	// Helpers
 	void SyncProfileFromUI();
